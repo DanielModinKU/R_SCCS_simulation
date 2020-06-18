@@ -30,7 +30,7 @@ sim <- function(time.grid.lower,  time.grid.upper,  time.step ,  sample.size,  e
      E[,j+1] <- rbinom(sample.size,  size=1, exposure.probability)
      
      #reset exposure to 0 for already exposed
-     has.exposure = rowSums(E)
+     has.exposure = rowSums(E[, 1:j])                                        #OBS: her i oprindelig kode fra møde stod rowSums(E), som gav fejl der når kode køres får alle exposures slettet (fordi exposure i E[,j+1] medtages)
      E[has.exposure == 1, j+1] <- 0 #reset exp to 0 for prev exposed
      
      #update linear predictor ift exposed or not
@@ -64,7 +64,7 @@ sim1 = sim( 0,   #time.grid.lower
          1,      #oddsratio.exposure
          1.05,   #oddsratio.X (odds associeret med comorbs/frailty)
          0.001,  #odds.baseline aka baseline risk 
-         0.1     #exposure.probability 
+         0.01     #exposure.probability 
 )
 
 
