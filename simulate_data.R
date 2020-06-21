@@ -19,7 +19,12 @@ sim <- function(time.grid.lower,  time.grid.upper,  time.step ,  sample.size,  e
   Y = matrix( numeric(sample.size*time.grid.length),  ncol = time.grid.length)
   
   #linear prediction based on frailty and baseline risk 
-  lin.pred = log(oddsratio.X)*X + log(odds.baseline)
+  b_0 = log(odds.baseline)
+  b_1 = log(oddsratio.X)
+  lin.pred = b_0 + b_1*X              
+  
+  #exposure coefficient
+  b_exposure = log(oddsratio.exposure)
   
   #simulate data
   for (j in time.grid) { 
@@ -35,10 +40,13 @@ sim <- function(time.grid.lower,  time.grid.upper,  time.step ,  sample.size,  e
      
      #update linear predictor ift exposed or not
      current.exposure = rowSums(E[,(j+1-exposure.duration):(j+1)])
-     current.lin.pred = lin.pred + log(oddsratio.exposure)*current.exposure
+     current.lin.pred = lin.pred + b_exposure*current.exposure
+     
+     #update outcome probability
+     outcome.probability = expit(current.lin.pred)
     
      #update outcomes 
-     Y[,j+1] <- rbinom(sample.size,size=1,expit(current.lin.pred))
+     Y[,j+1] <- rbinom(sample.size,size=1, outcome.probability)
     }
   }
   
@@ -54,19 +62,24 @@ sim <- function(time.grid.lower,  time.grid.upper,  time.step ,  sample.size,  e
 ################ RUN SIMULATIONS  #######################
 
 #run sim 1
-sim1 = sim( 0,   #time.grid.lower
-        40,      #time.grid.upper
-         1,      #time.step
-         1000,   #sample.size
-         2,      #exposure.duration
-         2,      #frailty.mean 
-         0.5,    #frailty.sd
-         1,      #oddsratio.exposure
-         1.05,   #oddsratio.X (odds associeret med comorbs/frailty)
-         0.001,  #odds.baseline aka baseline risk 
-         0.01     #exposure.probability 
+sim1 = sim( 0,      #time.grid.lower
+            40,     #time.grid.upper
+            1,      #time.step
+            1000,   #sample.size
+            2,      #exposure.duration
+            2,      #frailty.mean 
+            0.5,    #frailty.sd
+            1,      #oddsratio.exposure
+            1.05,   #oddsratio.X (odds ratio associeret med comorbs/frailty)
+            0.001,  #odds.baseline aka baseline risk (når odds er lille er odds ca lig sandsynlighed)
+            0.01    #exposure.probability 
 )
 
+E = sim1$E
+Y = sim1$Y
+
+print(sum(Y)) #check hvor mange outcomes
+print(sum(E)) #check hvor mange exposure 
 
 
 
