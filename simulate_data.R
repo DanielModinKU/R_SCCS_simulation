@@ -2,7 +2,16 @@
 ################ DEFINE FUNCTIONS #######################
 
 #expit function
-expit <- function(x) { exp(x)/(1+exp(x)) }
+expit <- function(x) { 
+  d = exp(x)/(1+exp(x))
+  return(d)
+}
+
+#my match function skrevet fordi base R match() opfærte sig mærkeligt med apply over matrix 
+my.match <- function(table, x, nomatches) {
+  z = match (x, table, nomatch = nomatches )
+  return(z)
+}
 
 #simulate data function 
 sim <- function(time.grid.lower,  time.grid.upper,  time.step ,  sample.size,  exposure.duration,  frailty.mean,  frailty.sd ,  oddsratio.exposure,  oddsratio.X,  odds.baseline,  exposure.probability, baseline.probability.observation, oddsratio.observation ) {
@@ -66,9 +75,28 @@ sim <- function(time.grid.lower,  time.grid.upper,  time.step ,  sample.size,  e
   #plot pt frailty distribution
   hist(X)
   
-  #return data in a list with E and Y 
-  return.list = list("E"=E, "E.observed" = E.observed, "Y"=Y)
-  return(return.list) 
+  #lav cohort datasæt###############################
+  
+  #udhent exposure indices (return index / time period (for example day of exposure if time unit is days)) if pt was exposed, return index -10 if not ( removed later, set to outside study period ) ) 
+  #OBS se funktion my.match, skrevet fordi der var nogle issues med rækkefølgen af argumenter som blev passet til match() i base R ved brug af apply funktionen
+  E.time <- apply( E, 1, my.match, 1, -10) #vektor med time unit for exposure for hver pt (vil være dag for exposure hvis time unit er i dage ift start af studie periode eks) (-10 hvis pt ej exposed)
+  E.observed.time <- apply( E.observed, 1, my.match, 1, -10) #samme som E.times, men blot for observed exposures
+  Y.first.time <- apply( Y , 1, my.match, 1, -10) #vektor med time unit for outcome for hver pt (vil være dag for outcome  hvis time unit er i dage ift start af studie periode eks) (-10 hvis pt ej outcome)
+  
+  #konstruer matrix med 1 row = 1 pt og 3 kolonner ( Exposure time, observed exposure time og outcome time)
+  data.full.cohort <- cbind(E.time, E.observed.time,Y.first.time)
+  
+  #add unikt pt ID
+  ID <- 1:nrow(data.full.cohort)
+  
+  #flet på data
+  data.full.cohort <- cbind(ID,data.full.cohort)
+  
+  #lav til dataframe 
+  df <- data.frame(data.full.cohort)
+  
+  #return full cohort dataframe
+  return(df) 
 }
 
 
@@ -76,7 +104,7 @@ sim <- function(time.grid.lower,  time.grid.upper,  time.step ,  sample.size,  e
 
 #run sim 1
 sim1 = sim( 0,      #time.grid.lower
-            40,     #time.grid.upper
+            100,     #time.grid.upper
             1,      #time.step
             1000,   #sample.size
             2,      #exposure.duration
@@ -84,23 +112,19 @@ sim1 = sim( 0,      #time.grid.lower
             0.5,    #frailty.sd
             1,      #oddsratio.exposure
             1.05,   #oddsratio.X (odds ratio associeret med comorbs/frailty)
-            0.001,  #odds.baseline aka baseline risk (når odds er lille er odds ca lig sandsynlighed)
+            0.0005,  #odds.baseline aka baseline risk (når odds er lille er odds ca lig sandsynlighed)
             0.01,   #exposure.probability 
             0.5,    #baseline probability of observing exposure given 0 effect of comorbidty (intercept term in log reg)
             1       #oddsratio for exposure observation depending on comorbidity/frailty
 )
 
-E = sim1$E
-Y = sim1$Y
-E.observed = sim1$E.observed
 
-print(sum(Y)) #check hvor mange outcomes
-print(sum(E)) #check hvor mange exposure 
-print(sum(E.observed)) #check hvor mange observed exposures 
+#case data med kun ptt der har outcome 
+data.cases <- sim1[ sim1['Y.first.time']>0 , ]
 
+data.cases
 
-
-
+nrow(data.cases) 
 
 
 
