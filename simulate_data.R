@@ -165,7 +165,7 @@ run_sccs = function(data, risk_duration = 14) {
 ################# PARALLEL PROCESSING TEST ###########################
 
 #antal cpu cores 
-num_cores = detectCores()  #køre antal cores - 1 så computeren stadig kan bruges lidt ..
+num_cores = detectCores()-1  #køre antal cores - 1 så computeren stadig kan bruges lidt ..
 
 #create worker cluster
 work_cluster = makeCluster(num_cores, setup_timeout = 0.5) #der er en fejl (se github: https://github.com/rstudio/rstudio/issues/6692 ) i makeCluster ift Mac OS, kræver setup_timeout < 1 for at virke, temporary fix
