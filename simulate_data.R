@@ -1,4 +1,5 @@
 library(SCCS) #pakke fra farrington og co. til at fitte SCCS modeller
+library(parallel) #multi core processing
 
 ################ DEFINE FUNCTIONS #######################
 
@@ -119,9 +120,13 @@ sim <- function(time.grid.lower,  time.grid.upper,  time.step ,  sample.size,  e
 
 
 ################ RUN SIMULATIONS  #######################
+################ RUN SIMULATIONS  #######################
+
+
+################ DEFINE TEMPORARY TEST FUNCTIONS  #######################
 
 #for temporary testing
-run_sim = function() {
+run_sim = function(parallel_dummy=NULL) {
   #run sim to generate data 
   sim1 = sim( 0,      #time.grid.lower
               100,     #time.grid.upper
@@ -157,24 +162,32 @@ run_sccs = function(data, risk_duration = 14) {
   return(est1)
 }
 
+################# PARALLEL PROCESSING TEST ###########################
 
-#initialize empty vector 
-p_values = vector() 
+#antal cpu cores 
+num_cores = detectCores()  #køre antal cores - 1 så computeren stadig kan bruges lidt ..
 
+#create worker cluster
+work_cluster = makeCluster(num_cores, setup_timeout = 0.5) #der er en fejl (se github: https://github.com/rstudio/rstudio/issues/6692 ) i makeCluster ift Mac OS, kræver setup_timeout < 1 for at virke, temporary fix
 
-#run sims test loop 
-iterations = 100
-for (i in 1:iterations) {
-  if (i%%10==0) { #progress printing
-    print(paste(i/iterations*100,'% completed'))
-  }
-  est = run_sccs(run_sim())
-  p_values = c(p_values,est[[7]][5])
-}
+#export functions to workers (they cannot look up the function definition)
+clusterExport(work_cluster, c('run_sccs','run_sim','sim','standardsccs','expit','my.match'))
 
+#number of sims to run in parallel
+nsims = 100
 
-#OR på 1.0 for exposure i sims pt, så vi forventer at ca 5% af sims vil give signifikant resultat (p<0.05) pr. tillfældighed
-v = p_values < 0.05
-prop_sig = sum(v)/length(p_values)
-print(paste('Type I error rate: ',prop_sig*100,'%'))
+######### RUN SIMS IN PARALLEL ##############
+sims = parLapply(work_cluster, 1:nsims, function(x) {run_sccs(run_sim(x))})
+######### RUN SIMS IN PARALLEL ##############
+
+#close workers
+stopCluster(work_cluster)
+
+#extract p values of sims to a vector 
+ps = sapply(sims, function(ele) {ele[[7]][5]})
+
+#OR på 1.0 for exposure i sims call, så vi forventer at ca 5% af sims vil give signifikant resultat (p<0.05) pr. tillfældighed
+v = ps < 0.05
+proportion_sig = sum(v)/length(ps)
+print(paste('Type I error rate: ',proportion_sig*100,'%'))
 
