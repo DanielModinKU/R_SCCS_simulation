@@ -1,3 +1,4 @@
+library(SCCS) #pakke fra farrington og co. til at fitte SCCS modeller
 
 ################ DEFINE FUNCTIONS #######################
 
@@ -14,7 +15,7 @@ my.match <- function(table, x, nomatches) {
 }
 
 #simulate data function 
-sim <- function(time.grid.lower,  time.grid.upper,  time.step ,  sample.size,  exposure.duration,  frailty.mean,  frailty.sd ,  oddsratio.exposure,  oddsratio.X,  odds.baseline,  exposure.probability, baseline.probability.observation, oddsratio.observation ) {
+sim <- function(time.grid.lower,  time.grid.upper,  time.step ,  sample.size,  exposure.duration,  frailty.mean,  frailty.sd ,  oddsratio.exposure,  oddsratio.X,  odds.baseline,  exposure.probability, baseline.probability.observation, oddsratio.observation, cases_only = F, exposed_cases_only =F, print_X =F ) {
   
   #create time grid 
   time.grid <- seq(time.grid.lower,time.grid.upper,  time.step)
@@ -46,8 +47,8 @@ sim <- function(time.grid.lower,  time.grid.upper,  time.step ,  sample.size,  e
   
   #simulate data
   for (j in time.grid) { 
-    if (j>= exposure.duration) {
-     print(j)
+    if (j>= exposure.duration) { #OBS dette  når man definerer observationsperioe i SCCS kaldet! 
+     #print(j)
       
      #draw exposure 
      E[,j+1] <- rbinom(sample.size,  size=1, exposure.probability)
@@ -73,7 +74,10 @@ sim <- function(time.grid.lower,  time.grid.upper,  time.step ,  sample.size,  e
   }
   
   #plot pt frailty distribution
+  if (print_X==T) {
   hist(X)
+  }
+
   
   #lav cohort datasæt###############################
   
@@ -95,39 +99,82 @@ sim <- function(time.grid.lower,  time.grid.upper,  time.step ,  sample.size,  e
   #lav til dataframe 
   df <- data.frame(data.full.cohort)
   
-  #return full cohort dataframe
+  #return cases only
+  if (cases_only==T) {
+    df = df[ df['Y.first.time'] > 0, ]
+  }
+  
+  #return exposed cases only 
+  if (exposed_cases_only==T) {
+    df = df[ df['Y.first.time'] > 0 & df['E.time'] > 0, ]
+  }
+  
+  #add start and end of observation period to data
+  df['start'] = time.grid.lower
+  df['end'] = time.grid.upper
+  
+  #return data
   return(df) 
 }
 
 
 ################ RUN SIMULATIONS  #######################
 
-#run sim 1
-sim1 = sim( 0,      #time.grid.lower
-            100,     #time.grid.upper
-            1,      #time.step
-            1000,   #sample.size
-            2,      #exposure.duration
-            2,      #frailty.mean 
-            0.5,    #frailty.sd
-            1,      #oddsratio.exposure
-            1.05,   #oddsratio.X (odds ratio associeret med comorbs/frailty)
-            0.0005,  #odds.baseline aka baseline risk (når odds er lille er odds ca lig sandsynlighed)
-            0.01,   #exposure.probability 
-            0.5,    #baseline probability of observing exposure given 0 effect of comorbidty (intercept term in log reg)
-            1       #oddsratio for exposure observation depending on comorbidity/frailty
-)
+#for temporary testing
+run_sim = function() {
+  #run sim to generate data 
+  sim1 = sim( 0,      #time.grid.lower
+              100,     #time.grid.upper
+              1,      #time.step
+              5000,   #sample.size
+              14,      #exposure.duration
+              2,      #frailty.mean 
+              0.5,    #frailty.sd
+              1,      #oddsratio.exposure
+              1.05,   #oddsratio.X (odds ratio associeret med comorbs/frailty)
+              0.0005,  #odds.baseline aka baseline risk (når odds er lille er odds ca lig sandsynlighed)
+              0.01,   #exposure.probability 
+              0.5,    #baseline probability of observing exposure given 0 effect of comorbidty (intercept term in log reg)
+              1,       #oddsratio for exposure observation depending on comorbidity/frailty
+              #cases_only = T #optional, set true if only cases from the cohort with outcome to be returned in a df
+              exposed_cases_only = T, #optional, set true if one only wants exposed cases with outcome to be returned
+              print_X = F #optional, to plot the comorbidity distribution 
+  )
+  return(sim1)
+}
+
+#for temp testing, run sccs model
+run_sccs = function(data, risk_duration = 14) {
+  est1 = standardsccs(event~E.time,
+                      indiv=ID,
+                      astart=start+risk_duration, ## OBS forklaring på "+risk_duration": se definition af for loop i kode til at genererre data: if-sætning gør at man i perioden 0-risk_duration intervallet ikke kan få exposure eller outcome, derfor startes risk period her
+                      aend=end,
+                      aevent=Y.first.time,
+                      adrug=E.time,
+                      aedrug=E.time+risk_duration,
+                      data = data
+  )
+  return(est1)
+}
 
 
-#case data med kun ptt der har outcome 
-data.cases <- sim1[ sim1['Y.first.time']>0 , ]
-
-data.cases
-
-nrow(data.cases) 
+#initialize empty vector 
+p_values = vector() 
 
 
+#run sims test loop 
+iterations = 100
+for (i in 1:iterations) {
+  if (i%%10==0) { #progress printing
+    print(paste(i/iterations*100,'% completed'))
+  }
+  est = run_sccs(run_sim())
+  p_values = c(p_values,est[[7]][5])
+}
 
 
-
+#OR på 1.0 for exposure i sims pt, så vi forventer at ca 5% af sims vil give signifikant resultat (p<0.05) pr. tillfældighed
+v = p_values < 0.05
+prop_sig = sum(v)/length(p_values)
+print(paste('Type I error rate: ',prop_sig*100,'%'))
 
