@@ -1,5 +1,6 @@
 library(SCCS) #pakke fra farrington og co. til at fitte SCCS modeller
 library(parallel) #multi core processing
+library(R6)
 
 ################ DEFINE FUNCTIONS #######################
 
@@ -44,41 +45,41 @@ sim <- function(time.grid.lower,  time.grid.upper,  time.step ,  sample.size,  e
   b_observation = log(oddsratio.observation)
   lin.pred.observation =b_baseline + b_observation*X
   observation.probability = expit(lin.pred.observation)
-
+  
   
   #simulate data
   for (j in time.grid) { 
     if (j>= exposure.duration) { #OBS dette  når man definerer observationsperioe i SCCS kaldet! 
-     #print(j)
+      #print(j)
       
-     #draw exposure 
-     E[,j+1] <- rbinom(sample.size,  size=1, exposure.probability)
-     
-     #reset exposure to 0 for already exposed
-     has.exposure = rowSums(E[, 1:j])                                        #OBS: her i oprindelig kode fra møde stod rowSums(E), som gav fejl der når kode køres får alle exposures slettet (fordi exposure i E[,j+1] medtages)
-     E[has.exposure == 1, j+1] <- 0 #reset exp to 0 for prev exposed
-     
-     #update linear predictor ift exposed or not
-     current.exposure = rowSums(E[,(j+1-exposure.duration):(j+1)])
-     current.lin.pred = lin.pred + b_exposure*current.exposure
-     
-     #update outcome probability
-     outcome.probability = expit(current.lin.pred)
-    
-     #update outcomes 
-     Y[,j+1] <- rbinom(sample.size,size=1, outcome.probability)
-     
-     #draw observed exposure
-     has.current.exposure = E[,j] #logically, 1 if has and 0 if does not have
-     E.observed[has.current.exposure == 1, j] <- rbinom( sum(has.current.exposure) , size=1, observation.probability[has.current.exposure==1] )  #draw observed exposure with probability modified by frailty / comorbidity status
+      #draw exposure 
+      E[,j+1] <- rbinom(sample.size,  size=1, exposure.probability)
+      
+      #reset exposure to 0 for already exposed
+      has.exposure = rowSums(E[, 1:j])                                        #OBS: her i oprindelig kode fra møde stod rowSums(E), som gav fejl der når kode køres får alle exposures slettet (fordi exposure i E[,j+1] medtages)
+      E[has.exposure == 1, j+1] <- 0 #reset exp to 0 for prev exposed
+      
+      #update linear predictor ift exposed or not
+      current.exposure = rowSums(E[,(j+1-exposure.duration):(j+1)])
+      current.lin.pred = lin.pred + b_exposure*current.exposure
+      
+      #update outcome probability
+      outcome.probability = expit(current.lin.pred)
+      
+      #update outcomes 
+      Y[,j+1] <- rbinom(sample.size,size=1, outcome.probability)
+      
+      #draw observed exposure
+      has.current.exposure = E[,j] #logically, 1 if has and 0 if does not have
+      E.observed[has.current.exposure == 1, j] <- rbinom( sum(has.current.exposure) , size=1, observation.probability[has.current.exposure==1] )  #draw observed exposure with probability modified by frailty / comorbidity status
     }
   }
   
   #plot pt frailty distribution
   if (print_X==T) {
-  hist(X)
+    hist(X)
   }
-
+  
   
   #lav cohort datasæt###############################
   
@@ -124,6 +125,13 @@ sim <- function(time.grid.lower,  time.grid.upper,  time.step ,  sample.size,  e
 
 
 ################ DEFINE TEMPORARY TEST FUNCTIONS  #######################
+
+#top level function for temp testing
+master_sim = function(parallel_dummy=F) {
+  sim_data = run_sim()
+  estimates = run_sccs(sim_data, risk_duration = 14)
+  return(estimates)
+}
 
 #for temporary testing
 run_sim = function(parallel_dummy=NULL) {
@@ -171,17 +179,17 @@ num_cores = detectCores()-1  #køre antal cores - 1 så computeren stadig kan br
 work_cluster = makeCluster(num_cores, setup_timeout = 0.5) #der er en fejl (se github: https://github.com/rstudio/rstudio/issues/6692 ) i makeCluster ift Mac OS, kræver setup_timeout < 1 for at virke, temporary fix
 
 #export functions to workers (they cannot look up the function definition)
-clusterExport(work_cluster, c('run_sccs','run_sim','sim','standardsccs','expit','my.match'))
+clusterExport(work_cluster, c('run_sccs','master_sim','run_sim','sim','standardsccs','expit','my.match'))
 
 #number of sims to run in parallel
 nsims = 100
 
 ######### RUN SIMS IN PARALLEL ##############
-sims = parLapply(work_cluster, 1:nsims, function(x) {run_sccs(run_sim(x))})
+sims = parLapply(work_cluster, 1:nsims, function(x) {master_sim()})
 ######### RUN SIMS IN PARALLEL ##############
 
 #close workers
-stopCluster(work_cluster)
+stopCluster(work_cluster) 
 
 #extract p values of sims to a vector 
 ps = sapply(sims, function(ele) {ele[[7]][5]})
